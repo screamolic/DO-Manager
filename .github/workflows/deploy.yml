@@ -1,0 +1,99 @@
+# =============================================================================
+# DO Manager — Cloudflare Workers Deploy Workflow
+# =============================================================================
+# Before first run, set GitHub Secrets:
+#   CLOUDFLARE_API_TOKEN  — CF API token with Workers_scripts:write permission
+#   CLOUDFLARE_ACCOUNT_ID — Your Cloudflare account ID
+# =============================================================================
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+jobs:
+  deploy:
+    name: Deploy Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Authenticate with Cloudflare using GitHub Secrets
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build
+
+      - name: Run tests
+        run: npx vitest run
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # wrangler deploy does NOT apply D1 migrations automatically —
+      # apply them explicitly so a fresh database gets the full schema.
+      - name: Apply D1 migrations (production)
+        run: npx wrangler d1 migrations apply do-manager-db --remote
+
+      - name: Deploy Worker to Cloudflare
+        run: npx wrangler deploy
+
+      - name: Smoke test — verify Worker is healthy
+        run: |
+          echo "Checking https://do-manager.${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev/api/health ..."
+          curl -f --retry 3 --retry-delay 5 --max-time 10 \
+            "https://do-manager.${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev/api/health"
+
+      - name: Auto-rollback on smoke test failure
+        if: failure()
+        run: |
+          echo "Smoke test failed — rolling back to previous version..."
+          npx wrangler rollback
+          echo "Rollback complete."
+
+  # ===========================================================================
+  # Staging environment (optional) — uncomment to enable
+  #
+  # deploy-staging:
+  #   name: Deploy to Staging
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 10
+  #
+  #   env:
+  #     CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  #     CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  #
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with: { fetch-depth: 1 }
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 22
+  #         cache: npm
+  #     - run: npm ci
+  #     - run: npm run build --prefix frontend
+  #     - run: npx vitest run
+  #     - run: npx wrangler deploy --env staging
+  #     - run: |
+  #         curl -f --retry 3 --retry-delay 5 \
+  #           "https://do-manager-staging.${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev/api/health"
+  # ===========================================================================
