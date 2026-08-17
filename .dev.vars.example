@@ -1,0 +1,26 @@
+# ENCRYPTION_KEY_V1
+# 32-byte base64-encoded AES-GCM key for encrypting DO API tokens at rest.
+# Generate: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+ENCRYPTION_KEY_V1=CHANGE_ME_TO_A_32BYTE_BASE64_KEY
+
+# ENCRYPTION_KEY_V2
+# Second 32-byte base64 key for key rotation. Decrypts V1-encrypted values,
+# re-encrypts with V2 during rotation windows.
+ENCRYPTION_KEY_V2=CHANGE_ME_TO_A_DIFFERENT_32BYTE_BASE64_KEY
+
+# TELEGRAM_BOT_TOKEN
+# Telegram Bot API token from @BotFather. Used to send alert notifications
+# directly to the configured Telegram chat.
+# Can reuse the same token as your Hermes Agent bot, or create a new one.
+TELEGRAM_BOT_TOKEN=CHANGE_ME_TO_TELEGRAM_BOT_TOKEN
+
+# TELEGRAM_CHAT_ID
+# Numeric Telegram chat ID where Hermes Agent delivers bot alerts.
+# Find via @userinfobot on Telegram.
+TELEGRAM_CHAT_ID=CHANGE_ME_TO_TELEGRAM_CHAT_ID
+
+# TEAM_DOMAIN
+# Cloudflare Access team domain for JWT audience/issuer validation.
+# Example: https://<team>.cloudflareaccess.com
+TEAM_DOMAIN=https://example.cloudflareaccess.com
+
