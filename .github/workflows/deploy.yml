@@ -39,6 +39,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # frontend/ has its own package-lock.json — install separately
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
       - name: Build frontend
         working-directory: ./frontend
         run: npm run build
@@ -55,13 +60,24 @@ jobs:
         run: npx wrangler d1 migrations apply do-manager-db --remote
 
       - name: Deploy Worker to Cloudflare
-        run: npx wrangler deploy
+        id: deploy
+        run: |
+          # Capture output so we can extract the real workers.dev URL
+          # (the subdomain is NOT the account ID — hardcoding it caused
+          # smoke-test failures in CI).
+          npx wrangler deploy 2>&1 | tee /tmp/deploy.log
+          URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' /tmp/deploy.log | head -1 | tr -d '\r')
+          echo "deploy_url=$URL" >> "$GITHUB_OUTPUT"
+          if [ -z "$URL" ]; then
+            echo "::error::Could not determine workers.dev URL from deploy output"
+            exit 1
+          fi
 
       - name: Smoke test — verify Worker is healthy
         run: |
-          echo "Checking https://do-manager.${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev/api/health ..."
-          curl -f --retry 3 --retry-delay 5 --max-time 10 \
-            "https://do-manager.${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev/api/health"
+          URL="${{ steps.deploy.outputs.deploy_url }}"
+          echo "Checking $URL/api/health ..."
+          curl -f --retry 3 --retry-delay 5 --max-time 10 "$URL/api/health"
 
       - name: Auto-rollback on smoke test failure
         if: failure()
